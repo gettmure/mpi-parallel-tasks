@@ -3,4 +3,8 @@ project(mpi_parallel_tasks)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(mpi_parallel_tasks src/matrix/main.cpp)
+include_directories(/usr/include/mpi/)
+set(CMAKE_C_COMPILER "/usr/bin/mpicc")
+set(CMAKE_CXX_COMPILER "/usr/bin/mpic++")
+
+add_executable(matrix matrix.cpp)

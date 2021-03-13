@@ -1,16 +1,18 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <time.h>
+#include <ctime>
 #include <mpi/mpi.h>
 
 using namespace std;
 
 const double EPS = 1E-9;
 
-const unsigned char MATRIX_SIZE = 8;
+const unsigned char MATRIX_SIZE = 2;
 const char MIN_MATRIX_VALUE = -100;
 const char MAX_MATRIX_VALUE = 100;
+
+const char DESTINATION_THREAD = 0;
 
 double getDeterminant(vector<vector<double>>& matrix) {
     double det = 1;
@@ -83,16 +85,41 @@ void printMatrix(vector<vector<double>> matrix) {
 
 int main(int argc, char **argv) {
     vector<vector<double>> matrix (MATRIX_SIZE, vector<double> (MATRIX_SIZE));
-    double det;
+    int det = 0;
 
-    initMatrix(matrix);
-    printMatrix(matrix);
+    int threadsCount, threadRank;
+    MPI_Status status;
 
-    det = getDeterminant(matrix);
-    cout << det << endl;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &threadsCount);
+    MPI_Comm_rank(MPI_COMM_WORLD, &threadRank);
 
-//    MPI_Init(&argc, &argv);
-//    cout << "Hello world" << endl;
-//    MPI_Finalize();
+    if (threadRank == 0) {
+        if (threadsCount > 1) {
+            int receiverElement;
+
+            for (int i = 1; i < threadsCount; i++ ) {
+                MPI_Recv(
+                        &receiverElement,
+                        1,
+                        MPI_INT,
+                        MPI_ANY_SOURCE,
+                        MPI_ANY_TAG,
+                        MPI_COMM_WORLD,
+                        &status
+                );
+
+                det += receiverElement;
+            }
+            det += receiverElement;
+            cout << det;
+        }
+    } else {
+        int element = 1;
+        MPI_Send(&element, 1, MPI_INT, DESTINATION_THREAD, 0, MPI_COMM_WORLD);
+    }
+
+    MPI_Finalize();
+
     return 0;
 }
