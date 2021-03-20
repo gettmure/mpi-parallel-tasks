@@ -8,85 +8,45 @@ using namespace std;
 
 const double EPS = 1E-9;
 
-const unsigned char MATRIX_SIZE = 2;
+const unsigned char N = 3;
 const char MIN_MATRIX_VALUE = -100;
 const char MAX_MATRIX_VALUE = 100;
 
 const char DESTINATION_THREAD = 0;
 
-double getDeterminant(vector<vector<double>>& matrix) {
-    double det = 1;
+// Function to get cofactor of mat[p][q] in temp[][]. n is
+// current dimension of mat[][]
+void getCofactor(int mat[N][N], int temp[N][N], int p,
+                 int q, int n)
+{
+    int i = 0, j = 0;
 
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-        int k = i;
+    // Looping for each element of the matrix
+    for (int row = 0; row < n; row++)
+    {
+        for (int col = 0; col < n; col++)
+        {
+            //  Copying into temporary matrix only those
+            //  element which are not in given row and
+            //  column
+            if (row != p && col != q)
+            {
+                temp[i][j++] = mat[row][col];
 
-        for (int j = i + 1; j<  MATRIX_SIZE; j++) {
-            if (abs(matrix[j][i]) > abs(matrix[k][i])) {
-                k = j;
-            }
-        }
-
-        if (abs(matrix[k][i]) < EPS) {
-            det = 0;
-            break;
-        }
-
-        swap (matrix[i], matrix[k]);
-
-        if (i != k) {
-            det = -det;
-        }
-
-        det *= matrix[i][i];
-
-        for (int j = i + 1; j < MATRIX_SIZE; j++) {
-            matrix[i][j] /= matrix[i][i];
-        }
-
-        for (int j = 0; j < MATRIX_SIZE; j++) {
-            if (j != i && abs (matrix[j][i]) > EPS) {
-                for (int k = i + 1; k < MATRIX_SIZE; ++k) {
-                    matrix[j][k] -= matrix[i][k] * matrix[j][i];
+                // Row is filled, so increase row index and
+                // reset col index
+                if (j == n - 1)
+                {
+                    j = 0;
+                    i++;
                 }
             }
         }
     }
-
-    return det;
 }
 
-double generateMatrixValue() {
-    double randomValue = (double) rand() / RAND_MAX;
-
-    return MIN_MATRIX_VALUE + randomValue * (MAX_MATRIX_VALUE - MIN_MATRIX_VALUE);
-}
-
-void initMatrix(vector<vector<double>>& matrix) {
-    srand(time(nullptr));
-
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-        for (int j = 0; j < MATRIX_SIZE; j++) {
-            matrix[i][j] = generateMatrixValue();
-        }
-    }
-}
-
-void printMatrix(vector<vector<double>> matrix) {
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-        for (int j = 0; j < MATRIX_SIZE; j++) {
-            cout << matrix[i][j] << ' ';
-        }
-
-        cout << endl;
-    }
-
-    cout << endl;
-}
-
-int main(int argc, char **argv) {
-    vector<vector<double>> matrix (MATRIX_SIZE, vector<double> (MATRIX_SIZE));
-    int det = 0;
-
+int determinantOfMatrix(int mat[N][N], int n, int argc, char **argv)
+{
     int threadsCount, threadRank;
     MPI_Status status;
 
@@ -108,18 +68,47 @@ int main(int argc, char **argv) {
                         MPI_COMM_WORLD,
                         &status
                 );
-
-                det += receiverElement;
             }
-            det += receiverElement;
-            cout << det;
         }
     } else {
-        int element = 1;
-        MPI_Send(&element, 1, MPI_INT, DESTINATION_THREAD, 0, MPI_COMM_WORLD);
+        int D = 0;
+        if (n == 1) {
+            return mat[0][0];
+        }
+
+        int temp[N][N];
+        int sign = 1;
+
+        for (int f = 0; f < n; f++) {
+            getCofactor(mat, temp, 0, f, n);
+            D += sign * mat[0][f]
+                 * determinantOfMatrix(temp, n - 1, argc, argv);
+
+            sign = -sign;
+        }
+
+        return D;
     }
 
     MPI_Finalize();
+
+}
+
+/* function for displaying the matrix */
+void display(int mat[N][N], int row, int col)
+{
+    for (int i = 0; i < row; i++)
+    {
+        for (int j = 0; j < col; j++)
+            printf("  %d", mat[i][j]);
+        printf("n");
+    }
+}
+
+int main(int argc, char **argv) {
+    int mat[N][N] = { { 1, 20, -18 },
+                      { 3, 8, 21 },
+                      { 9, 34, 1 },};
 
     return 0;
 }
