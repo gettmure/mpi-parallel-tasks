@@ -7,5 +7,4 @@ include_directories(/usr/include/mpi/)
 set(CMAKE_C_COMPILER "/usr/bin/mpicc")
 set(CMAKE_CXX_COMPILER "/usr/bin/mpic++")
 
-add_executable(matrix matrix.cpp)
-add_executable(matrix_multiplication matrix_multiplication.cpp)
+add_executable(matrix_multiplication.cpp)

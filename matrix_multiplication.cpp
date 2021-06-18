@@ -1,86 +1,105 @@
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <ctime>
-#include <mpi/mpi.h>
+#include "mpi.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-using namespace std;
+#define MATSIZE 2
+#define NRA MATSIZE            /* number of rows in matrix A */
+#define NCA MATSIZE            /* number of columns in matrix A */
+#define NCB MATSIZE            /* number of columns in matrix B */
+#define MASTER 0               /* taskid of first task */
+#define FROM_MASTER 1          /* setting a message type */
+#define FROM_WORKER 2          /* setting a message type */
 
-const int MATRIX_SIZE = 3;
-
-void multiplyMatrixRec(int A[][MATRIX_SIZE], int B[][MATRIX_SIZE], int C[][MATRIX_SIZE])
-{
-    static int i = 0, j = 0, k = 0;
-
-    if (i >= MATRIX_SIZE) return;
-
-    if (j < MATRIX_SIZE)
-    {
-        if (k < MATRIX_SIZE)
-        {
-            C[i][j] += A[i][k] * B[k][j];
-            k++;
-
-            multiplyMatrixRec(A, B, C);
-        }
-
-        k = 0;
-        j++;
-        multiplyMatrixRec(A, B, C);
-    }
-
-    j = 0;
-    i++;
-    multiplyMatrixRec(A, B, C);
-}
-
-void multiplyMatrix(int A[][MATRIX_SIZE], int B[][MATRIX_SIZE])
-{
-    int C[MATRIX_SIZE][MATRIX_SIZE] = {0};
-
-    multiplyMatrixRec(A, B, C);
-
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-        for (int j = 0; j < MATRIX_SIZE; j++) {
-            printf("%d  ", C[i][j]);
-        }
-
-        printf("\n");
-    }
-}
-
-int main(int argc, char **argv) {
-    int threadsCount, threadRank;
+int main (int argc, char *argv[]) {
+    int numtasks,              /* number of tasks in partition */
+    taskid,                /* a task identifier */
+    numworkers,            /* number of worker tasks */
+    source,                /* task id of message source */
+    dest,                  /* task id of message destination */
+    mtype,                 /* message type */
+    rows,                  /* rows of matrix A sent to each worker */
+    averow, extra, offset, /* used to determine rows sent to each worker */
+    i, j, k, rc;           /* misc */
+    double a[NRA][NCA],           /* matrix A to be multiplied */
+    b[NCA][NCB],           /* matrix B to be multiplied */
+    c[NRA][NCB];           /* result matrix C */
     MPI_Status status;
 
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &threadsCount);
-    MPI_Comm_rank(MPI_COMM_WORLD, &threadRank);
+    MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
+    MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 
-    int a[MATRIX_SIZE][MATRIX_SIZE] = {{1, 1, 1}, {2, 2, 2}, {3, 3, 3}};
-    int b[MATRIX_SIZE][MATRIX_SIZE] = {{1, 1, 1}, {2, 2, 2}, {3, 3, 3}};
+    if (numtasks < 2) {
+        MPI_Abort(MPI_COMM_WORLD, rc);
+        exit(1);
+    }
 
-    multiplyMatrix(a, b);
+    numworkers = numtasks - 1;
 
-//    if (threadRank == 0) {
-//        for (int i = 1; i < threadsCount; i++ ) {
-//            MPI_Recv(
-//                    &reciever,
-//                    1,
-//                    MPI_INT,
-//                    MPI_ANY_SOURCE,
-//                    MPI_ANY_TAG,
-//                    MPI_COMM_WORLD,
-//                    &status
-//            );
-//        }
-//
-//        cout << reciever << endl;
-//    } else {
-//        MPI_Send(&threadRank, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-//    }
+    if (taskid == MASTER) {
+        for (i = 0; i < NRA; i++) {
+            for (j = 0; j < NCA; j++) {
+                a[i][j] = 1;
+            }
+        }
 
-    MPI_Finalize();
+        for (i = 0; i < NCA; i++) {
+            for (j = 0; j < NCB; j++) {
+                b[i][j] = 1;
+            }
+        }
 
-    return 0;
+        averow = NRA / numworkers;
+        extra = NRA % numworkers;
+        offset = 0;
+        mtype = FROM_MASTER;
+        for (dest = 1; dest <= numworkers; dest++) {
+            rows = (dest <= extra) ? averow + 1 : averow;
+            printf("Sending %d rows to task %d offset=%d\n",rows,dest,offset);
+            MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+            MPI_Send(&rows, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+            MPI_Send(&a[offset][0], rows * NCA, MPI_DOUBLE, dest, mtype,
+                     MPI_COMM_WORLD);
+            MPI_Send(&b, NCA * NCB, MPI_DOUBLE, dest, mtype, MPI_COMM_WORLD);
+            offset = offset + rows;
+        }
+
+        mtype = FROM_WORKER;
+        for (i = 1; i <= numworkers; i++) {
+            source = i;
+            MPI_Recv(&offset, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+            MPI_Recv(&rows, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+            MPI_Recv(&c[offset][0], rows * NCB, MPI_DOUBLE, source, mtype,
+                     MPI_COMM_WORLD, &status);
+        }
+
+        printf("******************************************************\n");
+        printf("Result Matrix:\n");
+        for (i=0; i<NRA; i++)
+        {
+           printf("\n");
+           for (j=0; j<NCB; j++)
+              printf("%6.2f   ", c[i][j]);
+        }
+        printf("\n******************************************************\n");
+    }
+
+    if (taskid > MASTER) {
+        mtype = FROM_MASTER;
+        MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+        MPI_Recv(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+        MPI_Recv(&a, rows * NCA, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
+        MPI_Recv(&b, NCA * NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
+
+        for (k = 0; k < NCB; k++)
+            for (i = 0; i < rows; i++) {
+                c[i][k] = 0.0;
+                for (j = 0; j < NCA; j++)
+                    c[i][k] = c[i][k] + a[i][j] * b[j][k];
+            }
+        mtype = FROM_WORKER;
+        MPI_Send(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+        MPI_Send(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+        MPI_Send(&c, rows * NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD);
+    }
 }
